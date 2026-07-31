@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>經典踩地雷 - 作者：許辰宏</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 踩地雷經典方塊立體效果 */
+        .cell-hidden {
+            background-color: #c0c0c0;
+            border: 3px solid;
+            border-top-color: #ffffff;
+            border-left-color: #ffffff;
+            border-bottom-color: #808080;
+            border-right-color: #808080;
+        }
+        .cell-revealed {
+            background-color: #c0c0c0;
+            border: 1px solid #808080;
+        }
+
+        /* 數字顏色 */
+        .num-1 { color: #0000ff; }
+        .num-2 { color: #008000; }
+        .num-3 { color: #ff0000; }
+        .num-4 { color: #000080; }
+        .num-5 { color: #800000; }
+        .num-6 { color: #008080; }
+        .num-7 { color: #000000; }
+        .num-8 { color: #808080; }
+        
+        /* 數字字體 */
+        .digital-font {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: black;
+            color: #ff0000;
+        }
+
+        /* 隱藏右鍵選單 */
+        #game-board {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 min-h-screen flex flex-col items-center justify-center p-4 text-gray-800">
+
+    <!-- 主遊戲容器 -->
+    <div class="bg-gray-300 p-4 rounded-lg shadow-2xl border-4 border-gray-400 flex flex-col items-center">
+        
+        <!-- 標題與作者名稱 -->
+        <div class="text-center mb-3">
+            <h1 class="text-2xl font-bold text-gray-800 tracking-wide">💣 經典踩地雷 💣</h1>
+            <p class="text-sm text-gray-600 font-semibold mt-1">【作者：許辰宏】</p>
+        </div>
+
+        <!-- 難度選擇區與提示按鈕 -->
+        <div class="flex flex-wrap justify-center gap-2 mb-4">
+            <button onclick="setDifficulty('easy')" class="px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 font-bold active:bg-blue-700 text-sm shadow">初級 (9x9)</button>
+            <button onclick="setDifficulty('medium')" class="px-3 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 font-bold active:bg-green-700 text-sm shadow">中級 (16x16)</button>
+            <button onclick="setDifficulty('hard')" class="px-3 py-1.5 bg-red-500 text-white rounded hover:bg-red-600 font-bold active:bg-red-700 text-sm shadow">高級 (30x16)</button>
+            <!-- 限制提示次數的提示按鈕 -->
+            <button id="hint-btn" onclick="getHint()" class="px-3 py-1.5 bg-amber-500 text-white rounded hover:bg-amber-600 font-bold active:bg-amber-700 text-sm shadow flex items-center gap-1 transition-all">
+                💡 提示 (<span id="hint-count">3</span>)
+            </button>
+        </div>
+
+        <!-- 遊戲狀態列 -->
+        <div class="bg-gray-400 p-2 border-4 border-t-gray-600 border-l-gray-600 border-b-white border-r-white flex justify-between items-center mb-4 w-full max-w-[400px]">
+            <!-- 剩餘地雷數 (插旗數) -->
+            <div id="mines-count" class="digital-font text-3xl px-2 py-1 font-bold w-16 text-center">000</div>
+            
+            <!-- 重製按鈕 (笑臉) -->
+            <button id="reset-btn" onclick="initGame()" class="text-3xl w-12 h-12 bg-gray-300 border-4 border-t-white border-l-white border-b-gray-600 border-r-gray-600 flex items-center justify-center active:border-t-gray-600 active:border-l-gray-600 active:border-b-white active:border-r-white">
+                🙂
+            </button>
+            
+            <!-- 計時器 -->
+            <div id="timer" class="digital-font text-3xl px-2 py-1 font-bold w-16 text-center">000</div>
+        </div>
+
+        <!-- 訊息提示列 -->
+        <div id="message-area" class="text-xs font-bold text-gray-700 h-5 mb-2 text-center">
+            點擊任意格子開始遊戲！
+        </div>
+
+        <!-- 遊戲網格 -->
+        <div class="overflow-auto max-w-full">
+            <div id="game-board" class="bg-gray-400 border-4 border-t-gray-600 border-l-gray-600 border-b-white border-r-white grid gap-0" oncontextmenu="return false;">
+                <!-- JS 動態生成格子 -->
+            </div>
+        </div>
+
+        <!-- 頁尾署名 -->
+        <div class="mt-4 text-xs text-gray-500 text-center">
+            踩地雷遊戲開發 【作者：許辰宏】
+        </div>
+    </div>
+
+    <script>
+        // 難度設定常數 (加入不同的提示次數 maxHints)
+        const DIFFICULTIES = {
+            easy: { rows: 9, cols: 9, mines: 10, maxHints: 3 },
+            medium: { rows: 16, cols: 16, mines: 40, maxHints: 6 },
+            hard: { rows: 16, cols: 30, mines: 99, maxHints: 9 }
+        };
+
+        let currentDifficulty = 'easy';
+        let board = [];
+        let rows = 0;
+        let cols = 0;
+        let totalMines = 0;
+        let flagsLeft = 0;
+        let timer = 0;
+        let timerInterval = null;
+        let isGameOver = false;
+        let isFirstClick = true;
+        let revealedCount = 0;
+        let hintsLeft = 3; // 剩餘提示次數
+
+        // DOM 元素
+        const boardEl = document.getElementById('game-board');
+        const minesCountEl = document.getElementById('mines-count');
+        const timerEl = document.getElementById('timer');
+        const resetBtn = document.getElementById('reset-btn');
+        const messageArea = document.getElementById('message-area');
+        const hintBtn = document.getElementById('hint-btn');
+        const hintCountEl = document.getElementById('hint-count');
+
+        // 設定難度並重新開始
+        function setDifficulty(level) {
+            currentDifficulty = level;
+            initGame();
+        }
+
+        // 初始化遊戲
+        function initGame() {
+            const config = DIFFICULTIES[currentDifficulty];
+            rows = config.rows;
+            cols = config.cols;
+            totalMines = config.mines;
+            flagsLeft = totalMines;
+            timer = 0;
+            isGameOver = false;
+            isFirstClick = true;
+            revealedCount = 0;
+            hintsLeft = config.maxHints; // 根據當前難度重置對應的提示次數
+            board = [];
+
+            clearInterval(timerInterval);
+            timerInterval = null;
+            updateDisplay();
+            updateHintButtonUI();
+            resetBtn.textContent = '🙂';
+            setMessage('點擊任意格子開始遊戲！');
+
+            // 設定 CSS Grid 欄數
+            boardEl.style.gridTemplateColumns = `repeat(${cols}, 28px)`;
+            boardEl.innerHTML = '';
+
+            // 建立虛擬與實體網格
+            for (let r = 0; r < rows; r++) {
+                const row = [];
+                for (let c = 0; c < cols; c++) {
+                    const cellData = {
+                        r: r,
+                        c: c,
+                        isMine: false,
+                        isRevealed: false,
+                        isFlagged: false,
+                        neighborMines: 0
+                    };
+                    row.push(cellData);
+
+                    const cellEl = document.createElement('div');
+                    cellEl.id = `cell-${r}-${c}`;
+                    cellEl.className = 'w-[28px] h-[28px] flex items-center justify-center font-bold text-lg cell-hidden cursor-pointer';
+                    
+                    // 事件綁定 (左鍵點擊與右鍵插旗)
+                    cellEl.addEventListener('mousedown', (e) => handleCellInteraction(e, r, c));
+                    
+                    boardEl.appendChild(cellEl);
+                }
+                board.push(row);
+            }
+        }
+
+        // 處理格子互動
+        function handleCellInteraction(e, r, c) {
+            if (isGameOver) return;
+            const cell = board[r][c];
+
+            // 左鍵點擊 (揭開)
+            if (e.button === 0) {
+                if (cell.isFlagged || cell.isRevealed) return;
+                
+                // 第一步防呆機制：確保點擊的第一格不是地雷
+                if (isFirstClick) {
+                    placeMines(r, c);
+                    calculateNeighbors();
+                    startTimer();
+                    isFirstClick = false;
+                    setMessage('遊戲進行中...');
+                }
+                revealCell(r, c);
+                checkWin();
+            }
+            // 右鍵點擊 (插旗)
+            else if (e.button === 2) {
+                if (cell.isRevealed) return;
+                
+                if (!cell.isFlagged && flagsLeft > 0) {
+                    cell.isFlagged = true;
+                    flagsLeft--;
+                } else if (cell.isFlagged) {
+                    cell.isFlagged = false;
+                    flagsLeft++;
+                }
+                renderCell(r, c);
+                updateDisplay();
+            }
+        }
+
+        // 隨機放置地雷 (避開 initialR, initialC 確保第一步安全)
+        function placeMines(initialR, initialC) {
+            let minesPlaced = 0;
+            while (minesPlaced < totalMines) {
+                const r = Math.floor(Math.random() * rows);
+                const c = Math.floor(Math.random() * cols);
+                
+                if (!board[r][c].isMine && (r !== initialR || c !== initialC)) {
+                    board[r][c].isMine = true;
+                    minesPlaced++;
+                }
+            }
+        }
+
+        // 計算周圍的地雷數量
+        function calculateNeighbors() {
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (board[r][c].isMine) continue;
+                    let count = 0;
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = r + dr;
+                            const nc = c + dc;
+                            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                                if (board[nr][nc].isMine) count++;
+                            }
+                        }
+                    }
+                    board[r][c].neighborMines = count;
+                }
+            }
+        }
+
+        // 揭開格子 (包含自動擴散邏輯)
+        function revealCell(r, c) {
+            const cell = board[r][c];
+            if (cell.isRevealed || cell.isFlagged) return;
+
+            cell.isRevealed = true;
+            revealedCount++;
+            renderCell(r, c);
+
+            // 踩到地雷
+            if (cell.isMine) {
+                gameOver(false, r, c);
+                return;
+            }
+
+            // 周圍無地雷時進行擴散
+            if (cell.neighborMines === 0) {
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        const nr = r + dr;
+                        const nc = c + dc;
+                        if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                            if (!board[nr][nc].isRevealed) {
+                                revealCell(nr, nc);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 提示功能邏輯：自動尋找可揭開的安全格子（受次數限制）
+        function getHint() {
+            if (isGameOver) {
+                setMessage('遊戲已結束，請重新開始！');
+                return;
+            }
+
+            if (hintsLeft <= 0) {
+                setMessage('⚠️ 提示次數已用完！');
+                return;
+            }
+
+            // 如果還沒點擊第一步，隨機點擊一格
+            if (isFirstClick) {
+                const randomR = Math.floor(Math.random() * rows);
+                const randomC = Math.floor(Math.random() * cols);
+                hintsLeft--;
+                updateHintButtonUI();
+                handleCellInteraction({ button: 0 }, randomR, randomC);
+                setMessage(`💡 提示：為您開啟了第一步！（剩餘 ${hintsLeft} 次提示）`);
+                return;
+            }
+
+            // 搜尋非地雷且尚未揭開的格子
+            const safeCells = [];
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const cell = board[r][c];
+                    if (!cell.isMine && !cell.isRevealed && !cell.isFlagged) {
+                        safeCells.push(cell);
+                    }
+                }
+            }
+
+            if (safeCells.length > 0) {
+                // 優先找周圍有數字鄰居的安全格，增加遊戲推進感
+                let targetCell = safeCells.find(cell => {
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = cell.r + dr;
+                            const nc = cell.c + dc;
+                            if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
+                                if (board[nr][nc].isRevealed) return true;
+                            }
+                        }
+                    }
+                    return false;
+                });
+
+                if (!targetCell) {
+                    targetCell = safeCells[Math.floor(Math.random() * safeCells.length)];
+                }
+
+                // 扣除提示次數並更新按鈕介面
+                hintsLeft--;
+                updateHintButtonUI();
+
+                // 自動幫玩家揭開該安全格子
+                revealCell(targetCell.r, targetCell.c);
+                checkWin();
+                setMessage(`💡 已揭開格子 (${targetCell.r + 1}, ${targetCell.c + 1})，剩餘 ${hintsLeft} 次提示`);
+            } else {
+                setMessage('💡 目前找不到可以提示的安全格子！');
+            }
+        }
+
+        // 更新提示按鈕 UI
+        function updateHintButtonUI() {
+            hintCountEl.textContent = hintsLeft;
+            if (hintsLeft <= 0) {
+                hintBtn.disabled = true;
+                hintBtn.className = 'px-3 py-1.5 bg-gray-400 text-gray-200 rounded font-bold text-sm shadow cursor-not-allowed';
+            } else {
+                hintBtn.disabled = false;
+                hintBtn.className = 'px-3 py-1.5 bg-amber-500 text-white rounded hover:bg-amber-600 font-bold active:bg-amber-700 text-sm shadow flex items-center gap-1 transition-all';
+            }
+        }
+
+        // 渲染單一格子畫面
+        function renderCell(r, c) {
+            const cell = board[r][c];
+            const el = document.getElementById(`cell-${r}-${c}`);
+            
+            if (cell.isRevealed) {
+                el.className = 'w-[28px] h-[28px] flex items-center justify-center font-bold text-lg cell-revealed';
+                if (cell.isMine) {
+                    el.innerHTML = '💣';
+                    el.classList.add('bg-red-500');
+                } else if (cell.neighborMines > 0) {
+                    el.textContent = cell.neighborMines;
+                    el.classList.add(`num-${cell.neighborMines}`);
+                } else {
+                    el.textContent = '';
+                }
+            } else {
+                el.className = 'w-[28px] h-[28px] flex items-center justify-center font-bold text-lg cell-hidden cursor-pointer';
+                if (cell.isFlagged) {
+                    el.innerHTML = '🚩';
+                    el.classList.add('text-red-600');
+                } else {
+                    el.innerHTML = '';
+                }
+            }
+        }
+
+        // 遊戲結束
+        function gameOver(win, hitR = -1, hitC = -1) {
+            isGameOver = true;
+            clearInterval(timerInterval);
+            
+            if (win) {
+                resetBtn.textContent = '😎';
+                setMessage('🎉 恭喜獲勝！你順利清除所有地雷！');
+                flagsLeft = 0;
+                updateDisplay();
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        if (board[r][c].isMine && !board[r][c].isFlagged) {
+                            board[r][c].isFlagged = true;
+                            renderCell(r, c);
+                        }
+                    }
+                }
+            } else {
+                resetBtn.textContent = '😵';
+                setMessage('💥 踩到地雷了！遊戲結束！');
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const cell = board[r][c];
+                        if (cell.isMine && !cell.isFlagged) {
+                            cell.isRevealed = true;
+                            renderCell(r, c);
+                            if (r !== hitR || c !== hitC) {
+                                document.getElementById(`cell-${r}-${c}`).classList.remove('bg-red-500');
+                            }
+                        } else if (!cell.isMine && cell.isFlagged) {
+                            const el = document.getElementById(`cell-${r}-${c}`);
+                            el.innerHTML = '❌';
+                        }
+                    }
+                }
+            }
+        }
+
+        // 檢查是否獲勝
+        function checkWin() {
+            if (revealedCount === (rows * cols - totalMines)) {
+                gameOver(true);
+            }
+        }
+
+        // 設定訊息提示
+        function setMessage(msg) {
+            messageArea.textContent = msg;
+        }
+
+        // 計時器邏輯
+        function startTimer() {
+            timer = 0;
+            updateDisplay();
+            timerInterval = setInterval(() => {
+                if (timer < 999) {
+                    timer++;
+                    updateDisplay();
+                }
+            }, 1000);
+        }
+
+        // 更新電子數字顯示
+        function updateDisplay() {
+            minesCountEl.textContent = Math.max(0, flagsLeft).toString().padStart(3, '0');
+            timerEl.textContent = timer.toString().padStart(3, '0');
+        }
+
+        // 啟動預設遊戲
+        initGame();
+
+    </script>
+</body>
+</html>
